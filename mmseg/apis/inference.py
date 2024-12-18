@@ -1,16 +1,18 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 import mmcv
 import numpy as np
 import torch
+from mmcv.transforms import Compose
 from mmengine import Config
 from mmengine.registry import init_default_scope
 from mmengine.runner import load_checkpoint
 from mmengine.utils import mkdir_or_exist
 
+from mmseg.datasets.transforms import LoadAnnotations
 from mmseg.models import BaseSegmentor
 from mmseg.registry import MODELS
 from mmseg.structures import SegDataSample
@@ -53,7 +55,9 @@ def init_model(config: Union[str, Path, Config],
                 config.model[k].init_cfg = None
     config.model.pretrained = None
     config.model.train_cfg = None
-    init_default_scope(config.get('default_scope', 'mmseg'))
+    default_scope = config.get('default_scope', 'mmseg')
+    if default_scope is not None:
+        init_default_scope(default_scope)
 
     model = MODELS.build(config.model)
     if checkpoint is not None:
@@ -94,14 +98,18 @@ def init_model(config: Union[str, Path, Config],
     return model
 
 
-def inference_model(model: BaseSegmentor,
-                    img: ImageType) -> Union[SegDataSample, SampleList]:
+def inference_model(
+    model: BaseSegmentor,
+    imgs: ImageType,
+    test_pipeline: Optional[Compose] = None
+) -> Union[SegDataSample, SampleList]:
     """Inference image(s) with the segmentor.
 
     Args:
         model (nn.Module): The loaded segmentor.
-        imgs (str/ndarray or list[str/ndarray]): Either image files or loaded
-            images.
+        imgs (str, ndarray, Sequence[str/ndarray]):
+            Either image files or loaded images.
+        test_pipeline (:obj:`Compose`): Test pipeline.
 
     Returns:
         :obj:`SegDataSample` or list[:obj:`SegDataSample`]:
@@ -109,7 +117,7 @@ def inference_model(model: BaseSegmentor,
         will be returned, otherwise return the segmentation results directly.
     """
     # prepare data
-    data, is_batch = _preprare_data(img, model)
+    data, is_batch = _preprare_data(imgs, model, test_pipeline)
 
     # forward the model
     with torch.no_grad():
